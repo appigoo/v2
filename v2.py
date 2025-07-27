@@ -88,8 +88,8 @@ while True:
                 data = stock.history(period=selected_period, interval=selected_interval).reset_index()
 
                 # 计算涨跌幅百分比
-                data["Price Change %"] = data["Close"].pct_change().round(3) * 100
-                data["Volume Change %"] = data["Volume"].pct_change().round(3) * 100
+                data["Price Change %"] = data["Close"].pct_change().round(4) * 100
+                data["Volume Change %"] = data["Volume"].pct_change().round(4) * 100
                 
                 # 计算前 5 笔平均收盘价与平均成交量
                 data["前5均價"] = data["Price Change %"].rolling(window=5).mean()

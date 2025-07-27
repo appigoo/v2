@@ -1,4 +1,6 @@
 streamlit
 yfinance
-pandas_ta
-matplotlib
+pandas
+plotly
+numpy
+dotenv

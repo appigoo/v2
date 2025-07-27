@@ -136,7 +136,7 @@ while True:
 
                 # 显示含异动标记的历史资料
                 st.subheader(f"📋 歷史資料：{ticker}")
-                st.dataframe(data[["Datetime", "Close", "Volume", "Price Change %", 
+                st.dataframe(data[["Datetime", "Close","Low","High", "Volume", "Price Change %", 
                                  "Volume Change %", "📈 股價漲跌幅 (%)", 
                                  "📊 成交量變動幅 (%)", "異動標記"]].tail(20), 
                             height=600, use_container_width=True)

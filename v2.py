@@ -21,7 +21,7 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 RECIPIENT_EMAIL = os.getenv("RECIPIENT_EMAIL")
 
-# ### 新增 ### MACD 计算函数
+# MACD 计算函数
 def calculate_macd(data, fast=12, slow=26, signal=9):
     exp1 = data["Close"].ewm(span=fast, adjust=False).mean()
     exp2 = data["Close"].ewm(span=slow, adjust=False).mean()
@@ -41,7 +41,6 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
         body += f"\n⚠️ 當前最低價高於前一時段最高價！"
     if high_low_signal:
         body += f"\n⚠️ 當前最高價低於前一時段最低價！"
-    ### 新增 ### 添加 MACD 信号提示
     if macd_buy_signal:
         body += f"\n📈 MACD 買入訊號：MACD 線由負轉正！"
     if macd_sell_signal:
@@ -88,31 +87,27 @@ while True:
                 data = stock.history(period=selected_period, interval=selected_interval).reset_index()
 
                 # 计算涨跌幅百分比
-                data["Price Change %"] = data["Close"].pct_change().round(4) * 100
-                data["Volume Change %"] = data["Volume"].pct_change().round(4) * 100
+                data["Price Change %"] = data["Close"].pct_change() * 100
+                data["Volume Change %"] = data["Volume"].pct_change() * 100
                 
                 # 计算前 5 笔平均收盘价与平均成交量
                 data["前5均價"] = data["Price Change %"].rolling(window=5).mean()
                 data["前5均量"] = data["Volume"].rolling(window=5).mean()
-                data["📈 股價漲跌幅 (%)"] = ((data["Price Change %"] - data["前5均價"]) / data["前5均價"]).round(2) * 100
-                data["📊 成交量變動幅 (%)"] = ((data["Volume"] - data["前5均量"]) / data["前5均量"]).round(2) * 100
+                data["📈 股價漲跌幅 (%)"] = ((data["Price Change %"] - data["前5均價"]) / data["前5均價"]) * 100
+                data["📊 成交量變動幅 (%)"] = ((data["Volume"] - data["前5均量"]) / data["前5均量"]) * 100
 
-                # ### 新增 ### 计算 MACD
+                # 计算 MACD
                 data["MACD"], data["Signal"] = calculate_macd(data)
                 
-                # ### 修改 ### 标记量价异动、Low > High、High < Low 或 MACD 信号
+                # 标记量价异动、Low > High、High < Low 或 MACD 信号
                 def mark_signal(row, index):
                     signals = []
-                    # 检查量价异动
                     if abs(row["Price Change %"]) >= PRICE_THRESHOLD and abs(row["Volume Change %"]) >= VOLUME_THRESHOLD:
                         signals.append("✅ 量價")
-                    # 检查 Low > High
                     if index > 0 and row["Low"] > data["High"].iloc[index-1]:
                         signals.append("📈 Low>High")
-                    # 检查 High < Low
                     if index > 0 and row["High"] < data["Low"].iloc[index-1]:
                         signals.append("📉 High<Low")
-                    # ### 新增 ### 检查 MACD 信号
                     if index > 0 and row["MACD"] > 0 and data["MACD"].iloc[index-1] <= 0:
                         signals.append("📈 MACD買入")
                     if index > 0 and row["MACD"] <= 0 and data["MACD"].iloc[index-1] > 0:
@@ -132,7 +127,7 @@ while True:
                 volume_change = last_volume - prev_volume
                 volume_pct_change = (volume_change / prev_volume) * 100 if prev_volume else 0
 
-                # ### 修改 ### 检查 Low > High、High < Low 和 MACD 信号
+                # 检查 Low > High、High < Low 和 MACD 信号
                 low_high_signal = len(data) > 1 and data["Low"].iloc[-1] > data["High"].iloc[-2]
                 high_low_signal = len(data) > 1 and data["High"].iloc[-1] < data["Low"].iloc[-2]
                 macd_buy_signal = len(data) > 1 and data["MACD"].iloc[-1] > 0 and data["MACD"].iloc[-2] <= 0
@@ -144,7 +139,7 @@ while True:
                 st.metric(f"{ticker} 🔵 成交量變動", f"{last_volume:,}",
                           f"{volume_change:,} ({volume_pct_change:.2f}%)")
 
-                # ### 修改 ### 异动提醒 + Email 推播，包含 MACD 信号
+                # 异动提醒 + Email 推播
                 if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal or macd_buy_signal or macd_sell_signal:
                     alert_msg = f"{ticker} 異動：價格 {price_pct_change:.2f}%、成交量 {volume_pct_change:.2f}%"
                     if low_high_signal:
@@ -170,10 +165,26 @@ while True:
 
                 # 显示含异动标记的历史资料
                 st.subheader(f"📋 歷史資料：{ticker}")
-                st.dataframe(data[["Datetime", "Close","異動標記","Low","High","MACD", "Volume", "Price Change %", 
-                                 "Volume Change %", "📈 股價漲跌幅 (%)", 
-                                 "📊 成交量變動幅 (%)"]].tail(20), 
-                            height=600,width=800, use_container_width=True)
+                ### 修改 ### 设置異動標記列宽
+                st.dataframe(
+                    data[["Datetime", "Close", "Volume", "Price Change %", 
+                          "Volume Change %", "📈 股價漲跌幅 (%)", 
+                          "📊 成交量變動幅 (%)", "異動標記"]].tail(10),
+                    height=600,
+                    use_container_width=True,
+                    column_config={
+                        "異動標記": st.column_config.TextColumn(width="large")  # 设置为较大宽度
+                    }
+                )
+
+                # 添加下载按钮
+                csv = data.to_csv(index=False)
+                st.download_button(
+                    label=f"📥 下載 {ticker} 數據 (CSV)",
+                    data=csv,
+                    file_name=f"{ticker}_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                )
 
             except Exception as e:
                 st.warning(f"⚠️ 無法取得 {ticker} 的資料：{e}，將跳過此股票")

@@ -21,8 +21,16 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 RECIPIENT_EMAIL = os.getenv("RECIPIENT_EMAIL")
 
+# ### 新增 ### MACD 计算函数
+def calculate_macd(data, fast=12, slow=26, signal=9):
+    exp1 = data["Close"].ewm(span=fast, adjust=False).mean()
+    exp2 = data["Close"].ewm(span=slow, adjust=False).mean()
+    macd = exp1 - exp2
+    signal_line = macd.ewm(span=signal, adjust=False).mean()
+    return macd, signal_line
+
 # 邮件发送函数
-def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_low_signal=False):
+def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_low_signal=False, macd_buy_signal=False, macd_sell_signal=False):
     subject = f"📣 股票異動通知：{ticker}"
     body = f"""
     股票代號：{ticker}
@@ -31,9 +39,13 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
     """
     if low_high_signal:
         body += f"\n⚠️ 當前最低價高於前一時段最高價！"
-    ### 新增 ### 添加 High < Low 提示
     if high_low_signal:
         body += f"\n⚠️ 當前最高價低於前一時段最低價！"
+    ### 新增 ### 添加 MACD 信号提示
+    if macd_buy_signal:
+        body += f"\n📈 MACD 買入訊號：MACD 線由負轉正！"
+    if macd_sell_signal:
+        body += f"\n📉 MACD 賣出訊號：MACD 線由正轉負！"
     
     body += "\n系統偵測到異常變動，請立即查看市場情況。"
     msg = MIMEMultipart()
@@ -85,7 +97,10 @@ while True:
                 data["📈 股價漲跌幅 (%)"] = ((data["Price Change %"] - data["前5均價"]) / data["前5均價"]) * 100
                 data["📊 成交量變動幅 (%)"] = ((data["Volume"] - data["前5均量"]) / data["前5均量"]) * 100
 
-                # ### 修改 ### 标记量价异动、Low > High 或 High < Low
+                # ### 新增 ### 计算 MACD
+                data["MACD"], data["Signal"] = calculate_macd(data)
+                
+                # ### 修改 ### 标记量价异动、Low > High、High < Low 或 MACD 信号
                 def mark_signal(row, index):
                     signals = []
                     # 检查量价异动
@@ -94,9 +109,14 @@ while True:
                     # 检查 Low > High
                     if index > 0 and row["Low"] > data["High"].iloc[index-1]:
                         signals.append("📈 Low>High")
-                    # ### 新增 ### 检查 High < Low
+                    # 检查 High < Low
                     if index > 0 and row["High"] < data["Low"].iloc[index-1]:
                         signals.append("📉 High<Low")
+                    # ### 新增 ### 检查 MACD 信号
+                    if index > 0 and row["MACD"] > 0 and data["MACD"].iloc[index-1] <= 0:
+                        signals.append("📈 MACD買入")
+                    if index > 0 and row["MACD"] <= 0 and data["MACD"].iloc[index-1] > 0:
+                        signals.append("📉 MACD賣出")
                     return ", ".join(signals) if signals else ""
                 
                 data["異動標記"] = [mark_signal(row, i) for i, row in data.iterrows()]
@@ -112,9 +132,11 @@ while True:
                 volume_change = last_volume - prev_volume
                 volume_pct_change = (volume_change / prev_volume) * 100 if prev_volume else 0
 
-                # ### 修改 ### 检查 Low > High 和 High < Low 条件
+                # ### 修改 ### 检查 Low > High、High < Low 和 MACD 信号
                 low_high_signal = len(data) > 1 and data["Low"].iloc[-1] > data["High"].iloc[-2]
                 high_low_signal = len(data) > 1 and data["High"].iloc[-1] < data["Low"].iloc[-2]
+                macd_buy_signal = len(data) > 1 and data["MACD"].iloc[-1] > 0 and data["MACD"].iloc[-2] <= 0
+                macd_sell_signal = len(data) > 1 and data["MACD"].iloc[-1] <= 0 and data["MACD"].iloc[-2] > 0
 
                 # 显示当前资料
                 st.metric(f"{ticker} 🟢 股價變動", f"${current_price:.2f}",
@@ -122,16 +144,20 @@ while True:
                 st.metric(f"{ticker} 🔵 成交量變動", f"{last_volume:,}",
                           f"{volume_change:,} ({volume_pct_change:.2f}%)")
 
-                # ### 修改 ### 异动提醒 + Email 推播，包含 Low > High 和 High < Low
-                if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal:
+                # ### 修改 ### 异动提醒 + Email 推播，包含 MACD 信号
+                if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal or macd_buy_signal or macd_sell_signal:
                     alert_msg = f"{ticker} 異動：價格 {price_pct_change:.2f}%、成交量 {volume_pct_change:.2f}%"
                     if low_high_signal:
                         alert_msg += "，當前最低價高於前一時段最高價"
                     if high_low_signal:
                         alert_msg += "，當前最高價低於前一時段最低價"
+                    if macd_buy_signal:
+                        alert_msg += "，MACD 買入訊號（MACD 線由負轉正）"
+                    if macd_sell_signal:
+                        alert_msg += "，MACD 賣出訊號（MACD 線由正轉負）"
                     st.warning(f"📣 {alert_msg}")
                     st.toast(f"📣 {alert_msg}")
-                    send_email_alert(ticker, price_pct_change, volume_pct_change, low_high_signal, high_low_signal)
+                    send_email_alert(ticker, price_pct_change, volume_pct_change, low_high_signal, high_low_signal, macd_buy_signal, macd_sell_signal)
 
                 # 添加价格和成交量折线图
                 st.subheader(f"📈 {ticker} 價格與成交量趨勢")

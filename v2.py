@@ -200,7 +200,7 @@ while True:
                 st.dataframe(
                     data[["Datetime", "Close", "Volume", "Price Change %", 
                           "Volume Change %", "📈 股價漲跌幅 (%)", 
-                          "📊 成交量變動幅 (%)", "異動標記"]].tail(10),
+                          "📊 成交量變動幅 (%)", "異動標記"]].tail(20),
                     height=600,
                     use_container_width=True,
                     column_config={

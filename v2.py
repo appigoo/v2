@@ -30,7 +30,8 @@ def calculate_macd(data, fast=12, slow=26, signal=9):
     return macd, signal_line
 
 # 邮件发送函数
-def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_low_signal=False, macd_buy_signal=False, macd_sell_signal=False):
+def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_low_signal=False, 
+                     macd_buy_signal=False, macd_sell_signal=False, ema_buy_signal=False, ema_sell_signal=False):
     subject = f"📣 股票異動通知：{ticker}"
     body = f"""
     股票代號：{ticker}
@@ -45,6 +46,11 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
         body += f"\n📈 MACD 買入訊號：MACD 線由負轉正！"
     if macd_sell_signal:
         body += f"\n📉 MACD 賣出訊號：MACD 線由正轉負！"
+    ### 新增 ### 添加 EMA 交叉信号提示
+    if ema_buy_signal:
+        body += f"\n📈 EMA 買入訊號：EMA5 上穿 EMA10，成交量放大！"
+    if ema_sell_signal:
+        body += f"\n📉 EMA 賣出訊號：EMA5 下破 EMA10，成交量放大！"
     
     body += "\n系統偵測到異常變動，請立即查看市場情況。"
     msg = MIMEMultipart()
@@ -89,17 +95,21 @@ while True:
                 # 计算涨跌幅百分比
                 data["Price Change %"] = data["Close"].pct_change() * 100
                 data["Volume Change %"] = data["Volume"].pct_change() * 100
-                data["Price Change ABS %"]=abs(data["Price Change %"])
+                
                 # 计算前 5 笔平均收盘价与平均成交量
-                data["前5均價"] = abs(data["Price Change %"]).rolling(window=5).mean()
+                data["前5均價"] = data["Price Change %"].rolling(window=5).mean()
                 data["前5均量"] = data["Volume"].rolling(window=5).mean()
-                data["📈 股價漲跌幅 (%)"] = ((data["Price Change ABS %"] - data["前5均價"]) / data["前5均價"]) * 100
+                data["📈 股價漲跌幅 (%)"] = ((data["Price Change %"] - data["前5均價"]) / data["前5均價"]) * 100
                 data["📊 成交量變動幅 (%)"] = ((data["Volume"] - data["前5均量"]) / data["前5均量"]) * 100
 
                 # 计算 MACD
                 data["MACD"], data["Signal"] = calculate_macd(data)
                 
-                # 标记量价异动、Low > High、High < Low 或 MACD 信号
+                # ### 新增 ### 计算 EMA5 和 EMA10
+                data["EMA5"] = data["Close"].ewm(span=5, adjust=False).mean()
+                data["EMA10"] = data["Close"].ewm(span=10, adjust=False).mean()
+                
+                # ### 修改 ### 标记量价异动、Low > High、High < Low、MACD 或 EMA 信号
                 def mark_signal(row, index):
                     signals = []
                     if abs(row["Price Change %"]) >= PRICE_THRESHOLD and abs(row["Volume Change %"]) >= VOLUME_THRESHOLD:
@@ -112,6 +122,15 @@ while True:
                         signals.append("📈 MACD買入")
                     if index > 0 and row["MACD"] <= 0 and data["MACD"].iloc[index-1] > 0:
                         signals.append("📉 MACD賣出")
+                    ### 新增 ### 检查 EMA 交叉信号
+                    if (index > 0 and row["EMA5"] > row["EMA10"] and 
+                        data["EMA5"].iloc[index-1] <= data["EMA10"].iloc[index-1] and 
+                        row["Volume"] > data["Volume"].iloc[index-1]):
+                        signals.append("📈 EMA買入")
+                    if (index > 0 and row["EMA5"] < row["EMA10"] and 
+                        data["EMA5"].iloc[index-1] >= data["EMA10"].iloc[index-1] and 
+                        row["Volume"] > data["Volume"].iloc[index-1]):
+                        signals.append("📉 EMA賣出")
                     return ", ".join(signals) if signals else ""
                 
                 data["異動標記"] = [mark_signal(row, i) for i, row in data.iterrows()]
@@ -127,11 +146,20 @@ while True:
                 volume_change = last_volume - prev_volume
                 volume_pct_change = (volume_change / prev_volume) * 100 if prev_volume else 0
 
-                # 检查 Low > High、High < Low 和 MACD 信号
+                # ### 修改 ### 检查 Low > High、High < Low、MACD 和 EMA 信号
                 low_high_signal = len(data) > 1 and data["Low"].iloc[-1] > data["High"].iloc[-2]
                 high_low_signal = len(data) > 1 and data["High"].iloc[-1] < data["Low"].iloc[-2]
                 macd_buy_signal = len(data) > 1 and data["MACD"].iloc[-1] > 0 and data["MACD"].iloc[-2] <= 0
                 macd_sell_signal = len(data) > 1 and data["MACD"].iloc[-1] <= 0 and data["MACD"].iloc[-2] > 0
+                ### 新增 ### 检查 EMA 交叉信号
+                ema_buy_signal = (len(data) > 1 and 
+                                 data["EMA5"].iloc[-1] > data["EMA10"].iloc[-1] and 
+                                 data["EMA5"].iloc[-2] <= data["EMA10"].iloc[-2] and 
+                                 data["Volume"].iloc[-1] > data["Volume"].iloc[-2])
+                ema_sell_signal = (len(data) > 1 and 
+                                  data["EMA5"].iloc[-1] < data["EMA10"].iloc[-1] and 
+                                  data["EMA5"].iloc[-2] >= data["EMA10"].iloc[-2] and 
+                                  data["Volume"].iloc[-1] > data["Volume"].iloc[-2])
 
                 # 显示当前资料
                 st.metric(f"{ticker} 🟢 股價變動", f"${current_price:.2f}",
@@ -139,8 +167,8 @@ while True:
                 st.metric(f"{ticker} 🔵 成交量變動", f"{last_volume:,}",
                           f"{volume_change:,} ({volume_pct_change:.2f}%)")
 
-                # 异动提醒 + Email 推播
-                if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal or macd_buy_signal or macd_sell_signal:
+                # ### 修改 ### 异动提醒 + Email 推播，包含 EMA 信号
+                if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal or macd_buy_signal or macd_sell_signal or ema_buy_signal or ema_sell_signal:
                     alert_msg = f"{ticker} 異動：價格 {price_pct_change:.2f}%、成交量 {volume_pct_change:.2f}%"
                     if low_high_signal:
                         alert_msg += "，當前最低價高於前一時段最高價"
@@ -150,9 +178,13 @@ while True:
                         alert_msg += "，MACD 買入訊號（MACD 線由負轉正）"
                     if macd_sell_signal:
                         alert_msg += "，MACD 賣出訊號（MACD 線由正轉負）"
+                    if ema_buy_signal:
+                        alert_msg += "，EMA 買入訊號（EMA5 上穿 EMA10，成交量放大）"
+                    if ema_sell_signal:
+                        alert_msg += "，EMA 賣出訊號（EMA5 下破 EMA10，成交量放大）"
                     st.warning(f"📣 {alert_msg}")
                     st.toast(f"📣 {alert_msg}")
-                    send_email_alert(ticker, price_pct_change, volume_pct_change, low_high_signal, high_low_signal, macd_buy_signal, macd_sell_signal)
+                    send_email_alert(ticker, price_pct_change, volume_pct_change, low_high_signal, high_low_signal, macd_buy_signal, macd_sell_signal, ema_buy_signal, ema_sell_signal)
 
                 # 添加价格和成交量折线图
                 st.subheader(f"📈 {ticker} 價格與成交量趨勢")
@@ -165,7 +197,6 @@ while True:
 
                 # 显示含异动标记的历史资料
                 st.subheader(f"📋 歷史資料：{ticker}")
-                ### 修改 ### 设置異動標記列宽
                 st.dataframe(
                     data[["Datetime", "Close", "Volume", "Price Change %", 
                           "Volume Change %", "📈 股價漲跌幅 (%)", 
@@ -173,7 +204,7 @@ while True:
                     height=600,
                     use_container_width=True,
                     column_config={
-                        "異動標記": st.column_config.TextColumn(width="large")  # 设置为较大宽度
+                        "異動標記": st.column_config.TextColumn(width="large")
                     }
                 )
 

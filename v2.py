@@ -22,16 +22,18 @@ SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 RECIPIENT_EMAIL = os.getenv("RECIPIENT_EMAIL")
 
 # 邮件发送函数
-def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False):
+def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_low_signal=False):
     subject = f"📣 股票異動通知：{ticker}"
     body = f"""
     股票代號：{ticker}
     股價變動：{price_pct:.2f}%
     成交量變動：{volume_pct:.2f}%
     """
-    ### 新增 ### 添加 Low > High 提示
     if low_high_signal:
         body += f"\n⚠️ 當前最低價高於前一時段最高價！"
+    ### 新增 ### 添加 High < Low 提示
+    if high_low_signal:
+        body += f"\n⚠️ 當前最高價低於前一時段最低價！"
     
     body += "\n系統偵測到異常變動，請立即查看市場情況。"
     msg = MIMEMultipart()
@@ -83,7 +85,7 @@ while True:
                 data["📈 股價漲跌幅 (%)"] = ((data["Price Change %"] - data["前5均價"]) / data["前5均價"]) * 100
                 data["📊 成交量變動幅 (%)"] = ((data["Volume"] - data["前5均量"]) / data["前5均量"]) * 100
 
-                # ### 修改 ### 标记量价异动或 Low > High
+                # ### 修改 ### 标记量价异动、Low > High 或 High < Low
                 def mark_signal(row, index):
                     signals = []
                     # 检查量价异动
@@ -92,6 +94,9 @@ while True:
                     # 检查 Low > High
                     if index > 0 and row["Low"] > data["High"].iloc[index-1]:
                         signals.append("📈 Low>High")
+                    # ### 新增 ### 检查 High < Low
+                    if index > 0 and row["High"] < data["Low"].iloc[index-1]:
+                        signals.append("📉 High<Low")
                     return ", ".join(signals) if signals else ""
                 
                 data["異動標記"] = [mark_signal(row, i) for i, row in data.iterrows()]
@@ -107,8 +112,9 @@ while True:
                 volume_change = last_volume - prev_volume
                 volume_pct_change = (volume_change / prev_volume) * 100 if prev_volume else 0
 
-                # ### 新增 ### 检查 Low > High 条件
+                # ### 修改 ### 检查 Low > High 和 High < Low 条件
                 low_high_signal = len(data) > 1 and data["Low"].iloc[-1] > data["High"].iloc[-2]
+                high_low_signal = len(data) > 1 and data["High"].iloc[-1] < data["Low"].iloc[-2]
 
                 # 显示当前资料
                 st.metric(f"{ticker} 🟢 股價變動", f"${current_price:.2f}",
@@ -116,14 +122,16 @@ while True:
                 st.metric(f"{ticker} 🔵 成交量變動", f"{last_volume:,}",
                           f"{volume_change:,} ({volume_pct_change:.2f}%)")
 
-                # ### 修改 ### 异动提醒 + Email 推播，包含 Low > High
-                if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal:
+                # ### 修改 ### 异动提醒 + Email 推播，包含 Low > High 和 High < Low
+                if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal:
                     alert_msg = f"{ticker} 異動：價格 {price_pct_change:.2f}%、成交量 {volume_pct_change:.2f}%"
                     if low_high_signal:
                         alert_msg += "，當前最低價高於前一時段最高價"
+                    if high_low_signal:
+                        alert_msg += "，當前最高價低於前一時段最低價"
                     st.warning(f"📣 {alert_msg}")
                     st.toast(f"📣 {alert_msg}")
-                    send_email_alert(ticker, price_pct_change, volume_pct_change, low_high_signal)
+                    send_email_alert(ticker, price_pct_change, volume_pct_change, low_high_signal, high_low_signal)
 
                 # 添加价格和成交量折线图
                 st.subheader(f"📈 {ticker} 價格與成交量趨勢")
@@ -136,9 +144,9 @@ while True:
 
                 # 显示含异动标记的历史资料
                 st.subheader(f"📋 歷史資料：{ticker}")
-                st.dataframe(data[["Datetime", "Close","Low","High", "Volume", "Price Change %", 
+                st.dataframe(data[["Datetime", "Close", "Volume", "Price Change %", 
                                  "Volume Change %", "📈 股價漲跌幅 (%)", 
-                                 "📊 成交量變動幅 (%)", "異動標記"]].tail(20), 
+                                 "📊 成交量變動幅 (%)", "異動標記"]].tail(10), 
                             height=600, use_container_width=True)
 
             except Exception as e:

@@ -266,7 +266,7 @@ while True:
 
                 # 显示含异动标记的历史资料
                 st.subheader(f"📋 歷史資料：{ticker}")
-                display_data = data[["Datetime", "Close", "Volume", "Price Change %", 
+                display_data = data[["Datetime","Low", "Close", "Volume", "Price Change %", 
                                      "Volume Change %", "異動標記", "📈 股價漲跌幅 (%)", 
                                      "📊 成交量變動幅 (%)"]].tail(20)
                 if not display_data.empty:

@@ -32,7 +32,8 @@ def calculate_macd(data, fast=12, slow=26, signal=9):
 # 邮件发送函数
 def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_low_signal=False, 
                      macd_buy_signal=False, macd_sell_signal=False, ema_buy_signal=False, ema_sell_signal=False,
-                     price_trend_buy_signal=False, price_trend_sell_signal=False):
+                     price_trend_buy_signal=False, price_trend_sell_signal=False,
+                     price_trend_vol_buy_signal=False, price_trend_vol_sell_signal=False):
     subject = f"📣 股票異動通知：{ticker}"
     body = f"""
     股票代號：{ticker}
@@ -51,11 +52,15 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
         body += f"\n📈 EMA 買入訊號：EMA5 上穿 EMA10，成交量放大！"
     if ema_sell_signal:
         body += f"\n📉 EMA 賣出訊號：EMA5 下破 EMA10，成交量放大！"
-    ### 新增 ### 添加价格趋势信号提示
     if price_trend_buy_signal:
         body += f"\n📈 價格趨勢買入訊號：最高價、最低價、收盤價均上漲！"
     if price_trend_sell_signal:
         body += f"\n📉 價格趨勢賣出訊號：最高價、最低價、收盤價均下跌！"
+    ### 新增 ### 添加带成交量条件的价格趋势信号提示
+    if price_trend_vol_buy_signal:
+        body += f"\n📈 價格趨勢買入訊號（量）：最高價、最低價、收盤價均上漲且成交量放大！"
+    if price_trend_vol_sell_signal:
+        body += f"\n📉 價格趨勢賣出訊號（量）：最高價、最低價、收盤價均下跌且成交量放大！"
     
     body += "\n系統偵測到異常變動，請立即查看市場情況。"
     msg = MIMEMultipart()
@@ -74,8 +79,8 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
         st.error(f"Email 發送失敗：{e}")
 
 # UI 设定
-period_options = ["1d", "5d", "1mo", "3mo", "6mo", "1y"]
-interval_options = ["1m", "5m", "15m", "1h", "1d"]
+period_options = ["1d","5d","1mo","3mo","6mo","1y","2y","5y"]
+interval_options = ["1m","2m","5m","15m","30m","1h","90m","1d","5d","1mo"]
 
 st.title("📊 股票監控儀表板（含異動提醒與 Email 通知 ✅）")
 input_tickers = st.text_input("請輸入股票代號（逗號分隔）", value="TSLA, NIO, TSLL")
@@ -126,7 +131,7 @@ while True:
                 data["EMA5"] = data["Close"].ewm(span=5, adjust=False).mean()
                 data["EMA10"] = data["Close"].ewm(span=10, adjust=False).mean()
                 
-                # ### 修改 ### 标记量价异动、Low > High、High < Low、MACD、EMA 或价格趋势信号
+                # ### 新增 ### 标记量价异动、Low > High、High < Low、MACD、EMA、价格趋势及带成交量条件的价格趋势信号
                 def mark_signal(row, index):
                     signals = []
                     if abs(row["Price Change %"]) >= PRICE_THRESHOLD and abs(row["Volume Change %"]) >= VOLUME_THRESHOLD:
@@ -147,7 +152,6 @@ while True:
                         data["EMA5"].iloc[index-1] >= data["EMA10"].iloc[index-1] and 
                         row["Volume"] > data["Volume"].iloc[index-1]):
                         signals.append("📉 EMA賣出")
-                    ### 新增 ### 检查价格趋势信号
                     if (index > 0 and row["High"] > data["High"].iloc[index-1] and 
                         row["Low"] > data["Low"].iloc[index-1] and 
                         row["Close"] > data["Close"].iloc[index-1]):
@@ -156,6 +160,17 @@ while True:
                         row["Low"] < data["Low"].iloc[index-1] and 
                         row["Close"] < data["Close"].iloc[index-1]):
                         signals.append("📉 價格趨勢賣出")
+                    ### 新增 ### 检查带成交量条件的价格趋势信号
+                    if (index > 0 and row["High"] > data["High"].iloc[index-1] and 
+                        row["Low"] > data["Low"].iloc[index-1] and 
+                        row["Close"] > data["Close"].iloc[index-1] and 
+                        row["Volume"] > data["前5均量"].iloc[index]):
+                        signals.append("📈 價格趨勢買入(量)")
+                    if (index > 0 and row["High"] < data["High"].iloc[index-1] and 
+                        row["Low"] < data["Low"].iloc[index-1] and 
+                        row["Close"] < data["Close"].iloc[index-1] and 
+                        row["Volume"] > data["前5均量"].iloc[index]):
+                        signals.append("📉 價格趨勢賣出(量)")
                     return ", ".join(signals) if signals else ""
                 
                 data["異動標記"] = [mark_signal(row, i) for i, row in data.iterrows()]
@@ -171,7 +186,7 @@ while True:
                 volume_change = last_volume - prev_volume
                 volume_pct_change = (volume_change / prev_volume) * 100 if prev_volume else 0
 
-                # ### 修改 ### 检查 Low > High、High < Low、MACD、EMA 和价格趋势信号
+                # ### 新增 ### 检查 Low > High、High < Low、MACD、EMA 和价格趋势信号（包括带成交量条件）
                 low_high_signal = len(data) > 1 and data["Low"].iloc[-1] > data["High"].iloc[-2]
                 high_low_signal = len(data) > 1 and data["High"].iloc[-1] < data["Low"].iloc[-2]
                 macd_buy_signal = len(data) > 1 and data["MACD"].iloc[-1] > 0 and data["MACD"].iloc[-2] <= 0
@@ -184,7 +199,6 @@ while True:
                                   data["EMA5"].iloc[-1] < data["EMA10"].iloc[-1] and 
                                   data["EMA5"].iloc[-2] >= data["EMA10"].iloc[-2] and 
                                   data["Volume"].iloc[-1] > data["Volume"].iloc[-2])
-                ### 新增 ### 检查价格趋势信号
                 price_trend_buy_signal = (len(data) > 1 and 
                                          data["High"].iloc[-1] > data["High"].iloc[-2] and 
                                          data["Low"].iloc[-1] > data["Low"].iloc[-2] and 
@@ -193,6 +207,17 @@ while True:
                                           data["High"].iloc[-1] < data["High"].iloc[-2] and 
                                           data["Low"].iloc[-1] < data["Low"].iloc[-2] and 
                                           data["Close"].iloc[-1] < data["Close"].iloc[-2])
+                ### 新增 ### 检查带成交量条件的价格趋势信号
+                price_trend_vol_buy_signal = (len(data) > 1 and 
+                                             data["High"].iloc[-1] > data["High"].iloc[-2] and 
+                                             data["Low"].iloc[-1] > data["Low"].iloc[-2] and 
+                                             data["Close"].iloc[-1] > data["Close"].iloc[-2] and 
+                                             data["Volume"].iloc[-1] > data["前5均量"].iloc[-1])
+                price_trend_vol_sell_signal = (len(data) > 1 and 
+                                              data["High"].iloc[-1] < data["High"].iloc[-2] and 
+                                              data["Low"].iloc[-1] < data["Low"].iloc[-2] and 
+                                              data["Close"].iloc[-1] < data["Close"].iloc[-2] and 
+                                              data["Volume"].iloc[-1] > data["前5均量"].iloc[-1])
 
                 # 显示当前资料
                 st.metric(f"{ticker} 🟢 股價變動", f"${current_price:.2f}",
@@ -200,8 +225,8 @@ while True:
                 st.metric(f"{ticker} 🔵 成交量變動", f"{last_volume:,}",
                           f"{volume_change:,} ({volume_pct_change:.2f}%)")
 
-                # ### 修改 ### 异动提醒 + Email 推播，包含价格趋势信号
-                if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal or macd_buy_signal or macd_sell_signal or ema_buy_signal or ema_sell_signal or price_trend_buy_signal or price_trend_sell_signal:
+                # ### 新增 ### 异动提醒 + Email 推播，包含带成交量条件的价格趋势信号
+                if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal or macd_buy_signal or macd_sell_signal or ema_buy_signal or ema_sell_signal or price_trend_buy_signal or price_trend_sell_signal or price_trend_vol_buy_signal or price_trend_vol_sell_signal:
                     alert_msg = f"{ticker} 異動：價格 {price_pct_change:.2f}%、成交量 {volume_pct_change:.2f}%"
                     if low_high_signal:
                         alert_msg += "，當前最低價高於前一時段最高價"
@@ -219,11 +244,16 @@ while True:
                         alert_msg += "，價格趨勢買入訊號（最高價、最低價、收盤價均上漲）"
                     if price_trend_sell_signal:
                         alert_msg += "，價格趨勢賣出訊號（最高價、最低價、收盤價均下跌）"
+                    if price_trend_vol_buy_signal:
+                        alert_msg += "，價格趨勢買入訊號（量）（最高價、最低價、收盤價均上漲且成交量放大）"
+                    if price_trend_vol_sell_signal:
+                        alert_msg += "，價格趨勢賣出訊號（量）（最高價、最低價、收盤價均下跌且成交量放大）"
                     st.warning(f"📣 {alert_msg}")
                     st.toast(f"📣 {alert_msg}")
                     send_email_alert(ticker, price_pct_change, volume_pct_change, low_high_signal, high_low_signal, 
                                     macd_buy_signal, macd_sell_signal, ema_buy_signal, ema_sell_signal, 
-                                    price_trend_buy_signal, price_trend_sell_signal)
+                                    price_trend_buy_signal, price_trend_sell_signal,
+                                    price_trend_vol_buy_signal, price_trend_vol_sell_signal)
 
                 # 添加价格和成交量折线图
                 st.subheader(f"📈 {ticker} 價格與成交量趨勢")
@@ -237,8 +267,8 @@ while True:
                 # 显示含异动标记的历史资料
                 st.subheader(f"📋 歷史資料：{ticker}")
                 display_data = data[["Datetime", "Close", "Volume", "Price Change %", 
-                                     "Volume Change %", "📈 股價漲跌幅 (%)", 
-                                     "📊 成交量變動幅 (%)", "異動標記"]].tail(10)
+                                     "Volume Change %", "異動標記", "📈 股價漲跌幅 (%)", 
+                                     "📊 成交量變動幅 (%)"]].tail(20)
                 if not display_data.empty:
                     st.dataframe(
                         display_data,

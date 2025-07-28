@@ -272,7 +272,7 @@ while True:
                 if not display_data.empty:
                     st.dataframe(
                         display_data,
-                        height=600,
+                        height=800,
                         use_container_width=True,
                         column_config={
                             "異動標記": st.column_config.TextColumn(width="large")

@@ -14,7 +14,7 @@ st.set_page_config(page_title="股票監控儀表板", layout="wide")
 
 load_dotenv()
 # 异动阈值设定
-REFRESH_INTERVAL = 180  # 秒，5 分钟自动刷新
+REFRESH_INTERVAL = 60  # 秒，5 分钟自动刷新
 
 # Gmail 发信者帐号设置
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")

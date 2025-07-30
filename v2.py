@@ -9,7 +9,12 @@ from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 import os
 import plotly.express as px
-import pandas_ta as ta
+try:
+    import talib
+except ImportError as e:
+    st.error(f"無法導入 TA-Lib，可能缺少 TA-Lib 或 pkg_resources：{e}")
+    st.warning("DMI/ADX 訊號將被禁用，請安裝 TA-Lib（參見 https://github.com/TA-Lib/ta-lib-python）")
+    talib = None
 
 st.set_page_config(page_title="股票監控儀表板", layout="wide")
 
@@ -142,10 +147,20 @@ while True:
                 data["EMA10"] = data["Close"].ewm(span=10, adjust=False).mean()
                 
                 # 计算 DMI 和 ADX（周期设为 14）
-                dmi = ta.adx(data["High"], data["Low"], data["Close"], length=14)
-                data["+DI"] = dmi["ADX_14"]
-                data["-DI"] = dmi["DMI_14"]
-                data["ADX"] = dmi["ADX_14"]
+                if talib:
+                    try:
+                        data["+DI"] = talib.PLUS_DI(data["High"], data["Low"], data["Close"], timeperiod=14)
+                        data["-DI"] = talib.MINUS_DI(data["High"], data["Low"], data["Close"], timeperiod=14)
+                        data["ADX"] = talib.ADX(data["High"], data["Low"], data["Close"], timeperiod=14)
+                    except Exception as e:
+                        st.warning(f"⚠️ {ticker} DMI/ADX 計算失敗：{e}，將跳過 DMI 訊號")
+                        data["+DI"] = pd.Series([None] * len(data), index=data.index)
+                        data["-DI"] = pd.Series([None] * len(data), index=data.index)
+                        data["ADX"] = pd.Series([None] * len(data), index=data.index)
+                else:
+                    data["+DI"] = pd.Series([None] * len(data), index=data.index)
+                    data["-DI"] = pd.Series([None] * len(data), index=data.index)
+                    data["ADX"] = pd.Series([None] * len(data), index=data.index)
 
                 # 标记量价异动、Low > High、High < Low、MACD、EMA、价格趋势及带成交量条件的信号
                 def mark_signal(row, index):
@@ -196,14 +211,15 @@ while True:
                         row["Close"] < data["Close"].iloc[index-1] and 
                         row["Volume Change %"] > 15):
                         signals.append("📉 價格趨勢賣出(量%)")
-                    if (index > 0 and row["+DI"] > row["-DI"] and 
-                        data["+DI"].iloc[index-1] <= data["-DI"].iloc[index-1] and 
-                        row["ADX"] > 25):
-                        signals.append("📈 DMI買入")
-                    if (index > 0 and row["-DI"] > row["+DI"] and 
-                        data["-DI"].iloc[index-1] <= data["+DI"].iloc[index-1] and 
-                        row["ADX"] > 25):
-                        signals.append("📉 DMI賣出")
+                    if talib and index > 0 and pd.notnull(row["+DI"]) and pd.notnull(row["-DI"]) and pd.notnull(row["ADX"]):
+                        if (row["+DI"] > row["-DI"] and 
+                            data["+DI"].iloc[index-1] <= data["-DI"].iloc[index-1] and 
+                            row["ADX"] > 25):
+                            signals.append("📈 DMI買入")
+                        if (row["-DI"] > row["+DI"] and 
+                            data["-DI"].iloc[index-1] <= data["+DI"].iloc[index-1] and 
+                            row["ADX"] > 25):
+                            signals.append("📉 DMI賣出")
                     return ", ".join(signals) if signals else ""
                 
                 data["異動標記"] = [mark_signal(row, i) for i, row in data.iterrows()]
@@ -261,10 +277,18 @@ while True:
                                                   data["Close"].iloc[-1] < data["Close"].iloc[-2] and 
                                                   data["Volume Change %"].iloc[-1] > 15)
                 dmi_buy_signal = (len(data) > 1 and 
+                                 talib and 
+                                 pd.notnull(data["+DI"].iloc[-1]) and 
+                                 pd.notnull(data["-DI"].iloc[-1]) and 
+                                 pd.notnull(data["ADX"].iloc[-1]) and 
                                  data["+DI"].iloc[-1] > data["-DI"].iloc[-1] and 
                                  data["+DI"].iloc[-2] <= data["-DI"].iloc[-2] and 
                                  data["ADX"].iloc[-1] > 25)
                 dmi_sell_signal = (len(data) > 1 and 
+                                  talib and 
+                                  pd.notnull(data["+DI"].iloc[-1]) and 
+                                  pd.notnull(data["-DI"].iloc[-1]) and 
+                                  pd.notnull(data["ADX"].iloc[-1]) and 
                                   data["-DI"].iloc[-1] > data["+DI"].iloc[-1] and 
                                   data["-DI"].iloc[-2] <= data["+DI"].iloc[-2] and 
                                   data["ADX"].iloc[-1] > 25)

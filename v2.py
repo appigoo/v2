@@ -9,7 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 import os
 import plotly.express as px
-import pandas_ta as ta  ### 新增 ### 导入 pandas-ta 用于 DMI 和 ADX 计算
+import pandas_ta as ta
 
 st.set_page_config(page_title="股票監控儀表板", layout="wide")
 
@@ -27,7 +27,6 @@ def calculate_macd(data, fast=12, slow=26, signal=9):
     exp1 = data["Close"].ewm(span=fast, adjust=False).mean()
     exp2 = data["Close"].ewm(span=slow, adjust=False).mean()
     macd = exp1 - exp2
-   keyboard_arrow_down
     signal_line = macd.ewm(span=signal, adjust=False).mean()
     return macd, signal_line
 
@@ -37,7 +36,7 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
                      price_trend_buy_signal=False, price_trend_sell_signal=False,
                      price_trend_vol_buy_signal=False, price_trend_vol_sell_signal=False,
                      price_trend_vol_pct_buy_signal=False, price_trend_vol_pct_sell_signal=False,
-                     dmi_buy_signal=False, dmi_sell_signal=False):  ### 新增 ### 添加 DMI 信号参数
+                     dmi_buy_signal=False, dmi_sell_signal=False):
     subject = f"📣 股票異動通知：{ticker}"
     body = f"""
     股票代號：{ticker}
@@ -68,7 +67,6 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
         body += f"\n📈 價格趨勢買入訊號（量%）：最高價、最低價、收盤價均上漲且成交量變化 > 15%！"
     if price_trend_vol_pct_sell_signal:
         body += f"\n📉 價格趨勢賣出訊號（量%）：最高價、最低價、收盤價均下跌且成交量變化 > 15%！"
-    ### 新增 ### 添加 DMI 信号提示
     if dmi_buy_signal:
         body += f"\n📈 DMI 買入訊號：+DI 上穿 -DI 且 ADX > 25！"
     if dmi_sell_signal:
@@ -143,7 +141,7 @@ while True:
                 data["EMA5"] = data["Close"].ewm(span=5, adjust=False).mean()
                 data["EMA10"] = data["Close"].ewm(span=10, adjust=False).mean()
                 
-                ### 新增 ### 计算 DMI 和 ADX（周期设为 14）
+                # 计算 DMI 和 ADX（周期设为 14）
                 dmi = ta.adx(data["High"], data["Low"], data["Close"], length=14)
                 data["+DI"] = dmi["ADX_14"]
                 data["-DI"] = dmi["DMI_14"]
@@ -198,7 +196,6 @@ while True:
                         row["Close"] < data["Close"].iloc[index-1] and 
                         row["Volume Change %"] > 15):
                         signals.append("📉 價格趨勢賣出(量%)")
-                    ### 新增 ### 检查 DMI 信号
                     if (index > 0 and row["+DI"] > row["-DI"] and 
                         data["+DI"].iloc[index-1] <= data["-DI"].iloc[index-1] and 
                         row["ADX"] > 25):
@@ -263,7 +260,6 @@ while True:
                                                   data["Low"].iloc[-1] < data["Low"].iloc[-2] and 
                                                   data["Close"].iloc[-1] < data["Close"].iloc[-2] and 
                                                   data["Volume Change %"].iloc[-1] > 15)
-                ### 新增 ### 检查 DMI 买卖信号
                 dmi_buy_signal = (len(data) > 1 and 
                                  data["+DI"].iloc[-1] > data["-DI"].iloc[-1] and 
                                  data["+DI"].iloc[-2] <= data["-DI"].iloc[-2] and 
@@ -306,7 +302,6 @@ while True:
                         alert_msg += "，價格趨勢買入訊號（量%）（最高價、最低價、收盤價均上漲且成交量變化 > 15%）"
                     if price_trend_vol_pct_sell_signal:
                         alert_msg += "，價格趨勢賣出訊號（量%）（最高價、最低價、收盤價均下跌且成交量變化 > 15%）"
-                    ### 新增 ### 添加 DMI 信号提示
                     if dmi_buy_signal:
                         alert_msg += "，DMI 買入訊號（+DI 上穿 -DI 且 ADX > 25）"
                     if dmi_sell_signal:
@@ -324,9 +319,9 @@ while True:
                 st.subheader(f"📈 {ticker} 價格與成交量趨勢")
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 fig = px.line(data.tail(50), x="Datetime", y=["Close", "Volume"], 
-                             title=f"{ticker} 價格與成交量",
-                             labels={"Close": "價格", "Volume": "成交量"},
-                             render_mode="svg")
+                              title=f"{ticker} 價格與成交量",
+                              labels={"Close": "價格", "Volume": "成交量"},
+                              render_mode="svg")
                 fig.update_layout(yaxis2=dict(overlaying="y", side="right", title="成交量"))
                 st.plotly_chart(fig, use_container_width=True, key=f"chart_{ticker}_{timestamp}")
 

@@ -4,4 +4,3 @@ pandas
 plotly
 numpy
 dotenv
-TA-Lib

@@ -61,7 +61,6 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
         body += f"\n📈 價格趨勢買入訊號（量）：最高價、最低價、收盤價均上漲且成交量放大！"
     if price_trend_vol_sell_signal:
         body += f"\n📉 價格趨勢賣出訊號（量）：最高價、最低價、收盤價均下跌且成交量放大！"
-    ### 新增 ### 添加基于成交量变化百分比的价格趋势信号提示
     if price_trend_vol_pct_buy_signal:
         body += f"\n📈 價格趨勢買入訊號（量%）：最高價、最低價、收盤價均上漲且成交量變化 > 15%！"
     if price_trend_vol_pct_sell_signal:
@@ -136,7 +135,7 @@ while True:
                 data["EMA5"] = data["Close"].ewm(span=5, adjust=False).mean()
                 data["EMA10"] = data["Close"].ewm(span=10, adjust=False).mean()
                 
-                # ### 新增 ### 标记量价异动、Low > High、High < Low、MACD、EMA、价格趋势及带成交量条件的价格趋势信号
+                # 标记量价异动、Low > High、High < Low、MACD、EMA、价格趋势及带成交量条件的价格趋势信号
                 def mark_signal(row, index):
                     signals = []
                     if abs(row["Price Change %"]) >= PRICE_THRESHOLD and abs(row["Volume Change %"]) >= VOLUME_THRESHOLD:
@@ -175,7 +174,6 @@ while True:
                         row["Close"] < data["Close"].iloc[index-1] and 
                         row["Volume"] > data["前5均量"].iloc[index]):
                         signals.append("📉 價格趨勢賣出(量)")
-                    ### 新增 ### 检查基于成交量变化百分比的价格趋势信号
                     if (index > 0 and row["High"] > data["High"].iloc[index-1] and 
                         row["Low"] > data["Low"].iloc[index-1] and 
                         row["Close"] > data["Close"].iloc[index-1] and 
@@ -201,7 +199,7 @@ while True:
                 volume_change = last_volume - prev_volume
                 volume_pct_change = (volume_change / prev_volume) * 100 if prev_volume else 0
 
-                # ### 新增 ### 检查 Low > High、High < Low、MACD、EMA、价格趋势及带成交量条件的价格趋势信号
+                # 检查 Low > High、High < Low、MACD、EMA、价格趋势及带成交量条件的价格趋势信号
                 low_high_signal = len(data) > 1 and data["Low"].iloc[-1] > data["High"].iloc[-2]
                 high_low_signal = len(data) > 1 and data["High"].iloc[-1] < data["Low"].iloc[-2]
                 macd_buy_signal = len(data) > 1 and data["MACD"].iloc[-1] > 0 and data["MACD"].iloc[-2] <= 0
@@ -232,7 +230,6 @@ while True:
                                               data["Low"].iloc[-1] < data["Low"].iloc[-2] and 
                                               data["Close"].iloc[-1] < data["Close"].iloc[-2] and 
                                               data["Volume"].iloc[-1] > data["前5均量"].iloc[-1])
-                ### 新增 ### 检查基于成交量变化百分比的价格趋势信号
                 price_trend_vol_pct_buy_signal = (len(data) > 1 and 
                                                  data["High"].iloc[-1] > data["High"].iloc[-2] and 
                                                  data["Low"].iloc[-1] > data["Low"].iloc[-2] and 
@@ -250,7 +247,7 @@ while True:
                 st.metric(f"{ticker} 🔵 成交量變動", f"{last_volume:,}",
                           f"{volume_change:,} ({volume_pct_change:.2f}%)")
 
-                # ### 新增 ### 异动提醒 + Email 推播，包含基于成交量变化百分比的价格趋势信号
+                # 异动提醒 + Email 推播，包含基于成交量变化百分比的价格趋势信号
                 if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal or macd_buy_signal or macd_sell_signal or ema_buy_signal or ema_sell_signal or price_trend_buy_signal or price_trend_sell_signal or price_trend_vol_buy_signal or price_trend_vol_sell_signal or price_trend_vol_pct_buy_signal or price_trend_vol_pct_sell_signal:
                     alert_msg = f"{ticker} 異動：價格 {price_pct_change:.2f}%、成交量 {volume_pct_change:.2f}%"
                     if low_high_signal:
@@ -287,12 +284,14 @@ while True:
 
                 # 添加价格和成交量折线图
                 st.subheader(f"📈 {ticker} 價格與成交量趨勢")
+                ### 修改 ### 为 st.plotly_chart 添加唯一 key
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 fig = px.line(data.tail(50), x="Datetime", y=["Close", "Volume"], 
                              title=f"{ticker} 價格與成交量",
                              labels={"Close": "價格", "Volume": "成交量"},
                              render_mode="svg")
                 fig.update_layout(yaxis2=dict(overlaying="y", side="right", title="成交量"))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key=f"chart_{ticker}_{timestamp}")
 
                 # 显示含异动标记的历史资料
                 st.subheader(f"📋 歷史資料：{ticker}")
@@ -316,7 +315,7 @@ while True:
                 st.download_button(
                     label=f"📥 下載 {ticker} 數據 (CSV)",
                     data=csv,
-                    file_name=f"{ticker} 數據_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    file_name=f"{ticker}_數據_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv",
                 )
 

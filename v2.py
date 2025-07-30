@@ -9,12 +9,13 @@ from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 import os
 import plotly.express as px
+import pandas_ta as ta  ### 新增 ### 导入 pandas-ta 用于 DMI 和 ADX 计算
 
 st.set_page_config(page_title="股票監控儀表板", layout="wide")
 
 load_dotenv()
 # 异动阈值设定
-REFRESH_INTERVAL = 145  # 秒，5 分钟自动刷新
+REFRESH_INTERVAL = 300  # 秒，5 分钟自动刷新
 
 # Gmail 发信者帐号设置
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
@@ -26,6 +27,7 @@ def calculate_macd(data, fast=12, slow=26, signal=9):
     exp1 = data["Close"].ewm(span=fast, adjust=False).mean()
     exp2 = data["Close"].ewm(span=slow, adjust=False).mean()
     macd = exp1 - exp2
+   keyboard_arrow_down
     signal_line = macd.ewm(span=signal, adjust=False).mean()
     return macd, signal_line
 
@@ -34,7 +36,8 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
                      macd_buy_signal=False, macd_sell_signal=False, ema_buy_signal=False, ema_sell_signal=False,
                      price_trend_buy_signal=False, price_trend_sell_signal=False,
                      price_trend_vol_buy_signal=False, price_trend_vol_sell_signal=False,
-                     price_trend_vol_pct_buy_signal=False, price_trend_vol_pct_sell_signal=False):
+                     price_trend_vol_pct_buy_signal=False, price_trend_vol_pct_sell_signal=False,
+                     dmi_buy_signal=False, dmi_sell_signal=False):  ### 新增 ### 添加 DMI 信号参数
     subject = f"📣 股票異動通知：{ticker}"
     body = f"""
     股票代號：{ticker}
@@ -65,6 +68,11 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
         body += f"\n📈 價格趨勢買入訊號（量%）：最高價、最低價、收盤價均上漲且成交量變化 > 15%！"
     if price_trend_vol_pct_sell_signal:
         body += f"\n📉 價格趨勢賣出訊號（量%）：最高價、最低價、收盤價均下跌且成交量變化 > 15%！"
+    ### 新增 ### 添加 DMI 信号提示
+    if dmi_buy_signal:
+        body += f"\n📈 DMI 買入訊號：+DI 上穿 -DI 且 ADX > 25！"
+    if dmi_sell_signal:
+        body += f"\n📉 DMI 賣出訊號：-DI 上穿 +DI 且 ADX > 25！"
     
     body += "\n系統偵測到異常變動，請立即查看市場情況。"
     msg = MIMEMultipart()
@@ -135,7 +143,13 @@ while True:
                 data["EMA5"] = data["Close"].ewm(span=5, adjust=False).mean()
                 data["EMA10"] = data["Close"].ewm(span=10, adjust=False).mean()
                 
-                # 标记量价异动、Low > High、High < Low、MACD、EMA、价格趋势及带成交量条件的价格趋势信号
+                ### 新增 ### 计算 DMI 和 ADX（周期设为 14）
+                dmi = ta.adx(data["High"], data["Low"], data["Close"], length=14)
+                data["+DI"] = dmi["ADX_14"]
+                data["-DI"] = dmi["DMI_14"]
+                data["ADX"] = dmi["ADX_14"]
+
+                # 标记量价异动、Low > High、High < Low、MACD、EMA、价格趋势及带成交量条件的信号
                 def mark_signal(row, index):
                     signals = []
                     if abs(row["Price Change %"]) >= PRICE_THRESHOLD and abs(row["Volume Change %"]) >= VOLUME_THRESHOLD:
@@ -184,6 +198,15 @@ while True:
                         row["Close"] < data["Close"].iloc[index-1] and 
                         row["Volume Change %"] > 15):
                         signals.append("📉 價格趨勢賣出(量%)")
+                    ### 新增 ### 检查 DMI 信号
+                    if (index > 0 and row["+DI"] > row["-DI"] and 
+                        data["+DI"].iloc[index-1] <= data["-DI"].iloc[index-1] and 
+                        row["ADX"] > 25):
+                        signals.append("📈 DMI買入")
+                    if (index > 0 and row["-DI"] > row["+DI"] and 
+                        data["-DI"].iloc[index-1] <= data["+DI"].iloc[index-1] and 
+                        row["ADX"] > 25):
+                        signals.append("📉 DMI賣出")
                     return ", ".join(signals) if signals else ""
                 
                 data["異動標記"] = [mark_signal(row, i) for i, row in data.iterrows()]
@@ -199,7 +222,7 @@ while True:
                 volume_change = last_volume - prev_volume
                 volume_pct_change = (volume_change / prev_volume) * 100 if prev_volume else 0
 
-                # 检查 Low > High、High < Low、MACD、EMA、价格趋势及带成交量条件的价格趋势信号
+                # 检查 Low > High、High < Low、MACD、EMA、价格趋势及 DMI 信号
                 low_high_signal = len(data) > 1 and data["Low"].iloc[-1] > data["High"].iloc[-2]
                 high_low_signal = len(data) > 1 and data["High"].iloc[-1] < data["Low"].iloc[-2]
                 macd_buy_signal = len(data) > 1 and data["MACD"].iloc[-1] > 0 and data["MACD"].iloc[-2] <= 0
@@ -240,6 +263,15 @@ while True:
                                                   data["Low"].iloc[-1] < data["Low"].iloc[-2] and 
                                                   data["Close"].iloc[-1] < data["Close"].iloc[-2] and 
                                                   data["Volume Change %"].iloc[-1] > 15)
+                ### 新增 ### 检查 DMI 买卖信号
+                dmi_buy_signal = (len(data) > 1 and 
+                                 data["+DI"].iloc[-1] > data["-DI"].iloc[-1] and 
+                                 data["+DI"].iloc[-2] <= data["-DI"].iloc[-2] and 
+                                 data["ADX"].iloc[-1] > 25)
+                dmi_sell_signal = (len(data) > 1 and 
+                                  data["-DI"].iloc[-1] > data["+DI"].iloc[-1] and 
+                                  data["-DI"].iloc[-2] <= data["+DI"].iloc[-2] and 
+                                  data["ADX"].iloc[-1] > 25)
 
                 # 显示当前资料
                 st.metric(f"{ticker} 🟢 股價變動", f"${current_price:.2f}",
@@ -247,8 +279,8 @@ while True:
                 st.metric(f"{ticker} 🔵 成交量變動", f"{last_volume:,}",
                           f"{volume_change:,} ({volume_pct_change:.2f}%)")
 
-                # 异动提醒 + Email 推播，包含基于成交量变化百分比的价格趋势信号
-                if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal or macd_buy_signal or macd_sell_signal or ema_buy_signal or ema_sell_signal or price_trend_buy_signal or price_trend_sell_signal or price_trend_vol_buy_signal or price_trend_vol_sell_signal or price_trend_vol_pct_buy_signal or price_trend_vol_pct_sell_signal:
+                # 异动提醒 + Email 推播，包含 DMI 信号
+                if (abs(price_pct_change) >= PRICE_THRESHOLD and abs(volume_pct_change) >= VOLUME_THRESHOLD) or low_high_signal or high_low_signal or macd_buy_signal or macd_sell_signal or ema_buy_signal or ema_sell_signal or price_trend_buy_signal or price_trend_sell_signal or price_trend_vol_buy_signal or price_trend_vol_sell_signal or price_trend_vol_pct_buy_signal or price_trend_vol_pct_sell_signal or dmi_buy_signal or dmi_sell_signal:
                     alert_msg = f"{ticker} 異動：價格 {price_pct_change:.2f}%、成交量 {volume_pct_change:.2f}%"
                     if low_high_signal:
                         alert_msg += "，當前最低價高於前一時段最高價"
@@ -274,17 +306,22 @@ while True:
                         alert_msg += "，價格趨勢買入訊號（量%）（最高價、最低價、收盤價均上漲且成交量變化 > 15%）"
                     if price_trend_vol_pct_sell_signal:
                         alert_msg += "，價格趨勢賣出訊號（量%）（最高價、最低價、收盤價均下跌且成交量變化 > 15%）"
+                    ### 新增 ### 添加 DMI 信号提示
+                    if dmi_buy_signal:
+                        alert_msg += "，DMI 買入訊號（+DI 上穿 -DI 且 ADX > 25）"
+                    if dmi_sell_signal:
+                        alert_msg += "，DMI 賣出訊號（-DI 上穿 +DI 且 ADX > 25）"
                     st.warning(f"📣 {alert_msg}")
                     st.toast(f"📣 {alert_msg}")
                     send_email_alert(ticker, price_pct_change, volume_pct_change, low_high_signal, high_low_signal, 
                                     macd_buy_signal, macd_sell_signal, ema_buy_signal, ema_sell_signal, 
                                     price_trend_buy_signal, price_trend_sell_signal,
                                     price_trend_vol_buy_signal, price_trend_vol_sell_signal,
-                                    price_trend_vol_pct_buy_signal, price_trend_vol_pct_sell_signal)
+                                    price_trend_vol_pct_buy_signal, price_trend_vol_pct_sell_signal,
+                                    dmi_buy_signal, dmi_sell_signal)
 
                 # 添加价格和成交量折线图
                 st.subheader(f"📈 {ticker} 價格與成交量趨勢")
-                ### 修改 ### 为 st.plotly_chart 添加唯一 key
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 fig = px.line(data.tail(50), x="Datetime", y=["Close", "Volume"], 
                              title=f"{ticker} 價格與成交量",
@@ -297,7 +334,7 @@ while True:
                 st.subheader(f"📋 歷史資料：{ticker}")
                 display_data = data[["Datetime", "Close", "Volume", "Price Change %", 
                                      "Volume Change %", "📈 股價漲跌幅 (%)", 
-                                     "📊 成交量變動幅 (%)", "異動標記"]].tail(10)
+                                     "📊 成交量變動幅 (%)", "+DI", "-DI", "ADX", "異動標記"]].tail(10)
                 if not display_data.empty:
                     st.dataframe(
                         display_data,

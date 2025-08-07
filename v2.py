@@ -84,9 +84,9 @@ def send_email_alert(ticker, price_pct, volume_pct, low_high_signal=False, high_
 
 # UI 设定
 #period_options = ["1d", "5d", "1mo", "3mo", "6mo", "1y"]
-period_options = [“1d”, “5d”, “1mo”, “3mo”, “6mo”, “1y”, “2y”, “5y”, “10y”, “ytd”, “max”]
+period_options = ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
 #interval_options = ["1m", "5m", "15m", "1h", "1d"]
-interval_options = [“1m”, “5m”,“2m”, “15m”, “30m”, “60m”, “90m”, “1h”, “1d”, “5d”, “1wk”, “1mo”, “3mo”]
+interval_options = ["1m", "5m", "2m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"]
 
 st.title("📊 股票監控儀表板（含異動提醒與 Email 通知 ✅）")
 input_tickers = st.text_input("請輸入股票代號（逗號分隔）", value="TSLA, NIO, TSLL")

@@ -93,7 +93,7 @@ selected_period = st.selectbox("選擇時間範圍", period_options, index=1)
 selected_interval = st.selectbox("選擇資料間隔", interval_options, index=1)
 window_size = st.slider("滑動平均窗口大小", min_value=2, max_value=40, value=5)
 PRICE_THRESHOLD = st.number_input("價格異動閾值 (%)", min_value=0.1, max_value=50.0, value=2.0, step=0.1)
-VOLUME_THRESHOLD = st.number_input("成交量異動閾值 (%)", min_value=0.1, max_value=200.0, value=50.0, step=0.1)
+VOLUME_THRESHOLD = st.number_input("成交量異動閾值 (%)", min_value=0.1, max_value=200.0, value=80.0, step=0.1)
 
 placeholder = st.empty()
 
@@ -126,7 +126,7 @@ while True:
                 data["前5均價"] = data["Price Change %"].rolling(window=5).mean()
                 data["前5均價ABS"] = abs(data["Price Change %"]).rolling(window=5).mean()
                 data["前5均量"] = data["Volume"].rolling(window=5).mean()
-                data["📈 股價漲跌幅 (%)"] = ((data["Price Change %"] - data["前5均價"]) / data["前5均價"]) * 100
+                data["📈 股價漲跌幅 (%)"] = ((abs(data["Price Change %"]) - data["前5均價ABS"]) / data["前5均價ABS"]) * 100
                 data["📊 成交量變動幅 (%)"] = ((data["Volume"] - data["前5均量"]) / data["前5均量"]) * 100
 
                 # 计算 MACD
@@ -139,7 +139,7 @@ while True:
                 # 标记量价异动、Low > High、High < Low、MACD、EMA、价格趋势及带成交量条件的价格趋势信号
                 def mark_signal(row, index):
                     signals = []
-                    if abs(row["Price Change %"]) >= PRICE_THRESHOLD and abs(row["Volume Change %"]) >= VOLUME_THRESHOLD:
+                    if abs(row["📈 股價漲跌幅 (%)"]) >= PRICE_THRESHOLD and abs(row["📊 成交量變動幅 (%)"]) >= VOLUME_THRESHOLD:
                         signals.append("✅ 量價")
                     if index > 0 and row["Low"] > data["High"].iloc[index-1]:
                         signals.append("📈 Low>High")

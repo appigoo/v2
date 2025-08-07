@@ -124,6 +124,7 @@ while True:
                 
                 # 计算前 5 笔平均收盘价与平均成交量
                 data["前5均價"] = data["Price Change %"].rolling(window=5).mean()
+                data["前5均價ABS"] = abs(data["Price Change %"]).rolling(window=5).mean()
                 data["前5均量"] = data["Volume"].rolling(window=5).mean()
                 data["📈 股價漲跌幅 (%)"] = ((data["Price Change %"] - data["前5均價"]) / data["前5均價"]) * 100
                 data["📊 成交量變動幅 (%)"] = ((data["Volume"] - data["前5均量"]) / data["前5均量"]) * 100
@@ -295,7 +296,7 @@ while True:
 
                 # 显示含异动标记的历史资料
                 st.subheader(f"📋 歷史資料：{ticker}")
-                display_data = data[["Datetime","Low","High", "Close", "Volume", "Price Change %", 
+                display_data = data[["Datetime","Low","High", "Close", "Volume", "Price Change %","前5均價","前5均價ABS", 
                                      "Volume Change %", "📈 股價漲跌幅 (%)", 
                                      "📊 成交量變動幅 (%)", "異動標記"]].tail(15)
                 if not display_data.empty:

@@ -123,6 +123,7 @@ while True:
                 # 计算涨跌幅百分比
                 data["Price Change %"] = data["Close"].pct_change() * 100
                 data["Volume Change %"] = data["Volume"].pct_change() * 100
+                data["Close_Difference"] = data['Close'].diff().round(2)
                 
                 # 计算前 5 笔平均收盘价与平均成交量
                 data["前5均價"] = data["Price Change %"].rolling(window=5).mean()
@@ -300,7 +301,7 @@ while True:
                 st.subheader(f"📋 歷史資料：{ticker}")
                 display_data = data[["Datetime","Low","High", "Close", "Volume", "Price Change %", 
                                      "Volume Change %", "📈 股價漲跌幅 (%)", 
-                                     "📊 成交量變動幅 (%)", "異動標記"]].tail(15)
+                                     "📊 成交量變動幅 (%)","Close_Difference", "異動標記"]].tail(15)
                 if not display_data.empty:
                     st.dataframe(
                         display_data,

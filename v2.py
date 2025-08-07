@@ -92,7 +92,7 @@ selected_tickers = [t.strip().upper() for t in input_tickers.split(",") if t.str
 selected_period = st.selectbox("選擇時間範圍", period_options, index=1)
 selected_interval = st.selectbox("選擇資料間隔", interval_options, index=1)
 window_size = st.slider("滑動平均窗口大小", min_value=2, max_value=40, value=5)
-PRICE_THRESHOLD = st.number_input("價格異動閾值 (%)", min_value=0.1, max_value=50.0, value=2.0, step=0.1)
+PRICE_THRESHOLD = st.number_input("價格異動閾值 (%)", min_value=0.1, max_value=200.0, value=80.0, step=0.1)
 VOLUME_THRESHOLD = st.number_input("成交量異動閾值 (%)", min_value=0.1, max_value=200.0, value=80.0, step=0.1)
 
 placeholder = st.empty()
@@ -296,7 +296,7 @@ while True:
 
                 # 显示含异动标记的历史资料
                 st.subheader(f"📋 歷史資料：{ticker}")
-                display_data = data[["Datetime","Low","High", "Close", "Volume", "Price Change %","前5均價","前5均價ABS", 
+                display_data = data[["Datetime","Low","High", "Close", "Volume", "Price Change %", 
                                      "Volume Change %", "📈 股價漲跌幅 (%)", 
                                      "📊 成交量變動幅 (%)", "異動標記"]].tail(15)
                 if not display_data.empty:

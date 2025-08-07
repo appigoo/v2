@@ -121,16 +121,16 @@ while True:
                     continue
 
                 # 计算涨跌幅百分比
-                data["Price Change %"] = data["Close"].pct_change() * 100
-                data["Volume Change %"] = data["Volume"].pct_change() * 100
+                data["Price Change %"] = data["Close"].pct_change().round(2) * 100
+                data["Volume Change %"] = data["Volume"].pct_change().round(2) * 100
                 data["Close_Difference"] = data['Close'].diff().round(2)
                 
                 # 计算前 5 笔平均收盘价与平均成交量
                 data["前5均價"] = data["Price Change %"].rolling(window=5).mean()
                 data["前5均價ABS"] = abs(data["Price Change %"]).rolling(window=5).mean()
                 data["前5均量"] = data["Volume"].rolling(window=5).mean()
-                data["📈 股價漲跌幅 (%)"] = ((abs(data["Price Change %"]) - data["前5均價ABS"]) / data["前5均價ABS"]) * 100
-                data["📊 成交量變動幅 (%)"] = ((data["Volume"] - data["前5均量"]) / data["前5均量"]) * 100
+                data["📈 股價漲跌幅 (%)"] = ((abs(data["Price Change %"]) - data["前5均價ABS"]) / data["前5均價ABS"]).round(2) * 100
+                data["📊 成交量變動幅 (%)"] = ((data["Volume"] - data["前5均量"]) / data["前5均量"]).round(2) * 100
 
                 # 计算 MACD
                 data["MACD"], data["Signal"] = calculate_macd(data)
